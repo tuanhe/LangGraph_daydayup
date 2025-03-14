@@ -1,11 +1,12 @@
 from typing import Annotated
 from typing_extensions import TypedDict
-from langchain_core.tools import tool
+from langchain_core.tools import tool, Tool
 from langgraph.graph import StateGraph
 from langgraph.graph.message import add_messages
 from langchain_openai import ChatOpenAI
 from langchain.schema import HumanMessage, SystemMessage
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.graph import StateGraph, START, END
 
 llm = ChatOpenAI(
     openai_api_key="EMPTY",  # 替换为你的 OpenAI API 密钥
@@ -14,12 +15,21 @@ llm = ChatOpenAI(
     temperature=0.2,  # 控制创造性（0-1，越大回答越随机）
 )
 
-@tool
-def divide(a: float, b: float) -> int:
-    """Return a / b."""
-    return a / b
+def parsing_multiplier(string):
+    a, b = string.split(",")
+    c = (int(a) * int(b))
+    print(f"check the code called here")
+    return c
 
-tools = [divide]
+tools = [
+    Tool(
+        name="Multiplier",
+        func=parsing_multiplier,
+        description="useful for when you need to multiply two numbers together. The input to this tool should be a comma separated list of numbers of length two, representing the two numbers you want to multiply together. For example, `1,2` would be the input if you wanted to multiply 1 by 2.",
+    )
+]
+
+
 
 llm_with_tools = llm.bind_tools(tools)
 
@@ -28,6 +38,27 @@ class State(TypedDict):
 
 def chatbot(state: State):
     return {"messages": [llm_with_tools.invoke(state["messages"])]}
+
+
+def route_tools(state: State,):
+    """
+    在图构建器中添加条件边和普通边
+    以控制消息处理流程中的路由逻辑
+    """
+    if isinstance(state, list):
+        ai_message = state[-1]
+    elif messages := state.get("messages", []):
+        ai_message = messages[-1]
+    else:
+        raise ValueError(f"No messages found in input state to tool_edge: {state}")
+    print(f"Rout tools info : \nAi msg : {ai_message}")
+    # 检查 ai_message 是否包含 tool_calls 属性
+    if hasattr(ai_message, "tool_calls") and len(ai_message.tool_calls) > 0:
+        print(f"return tools \n")
+        return "tools"
+    print(f"return None tools \n")
+    return END
+
 
 def stream_graph_updates(user_input: str):
     for event in graph.stream({"messages": [{"role": "user", "content": user_input}]}):
@@ -40,16 +71,17 @@ if __name__ == '__main__':
     graph_builder.add_node("tools", ToolNode(tools))
     graph_builder.add_node("chatbot", chatbot)
     graph_builder.set_entry_point("chatbot")
-    graph_builder.set_finish_point("chatbot")
+    # graph_builder.set_finish_point("chatbot")
     graph_builder.add_edge("tools", "chatbot")
     graph_builder.add_conditional_edges(
-        "chatbot", tools_condition
+        "chatbot", route_tools
+        #tools_condition
     )
 
     graph = graph_builder.compile()
 
     try:
-        graph.get_graph().draw_mermaid_png(output_file_path="graph.png")
+        graph.get_graph().draw_mermaid_png(output_file_path="graph_with_tools.png")
     except Exception:
         # This requires some extra dependencies and is optional
         pass
@@ -68,3 +100,7 @@ if __name__ == '__main__':
             print("User: " + user_input)
             stream_graph_updates(user_input)
             break
+
+"""
+What's 329993 divided by 13662?
+"""
