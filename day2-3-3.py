@@ -9,15 +9,19 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.graph import StateGraph, START, END
 from typing import Type
 from pydantic import BaseModel, Field
+from auth  import get_headers
 # from langchain.tools import BaseTool
 import yfinance as yf
 
 
 llm = ChatOpenAI(
     openai_api_key="EMPTY",  # 替换为你的 OpenAI API 密钥
-    base_url="http://10.141.5.108:8888/v1",
-    model_name="qwen25",  # 默认模型，可改为 "gpt-4"
+    # base_url="http://10.141.5.108:8888/v1",
+    # model_name="qwen25",  # 默认模型，可改为 "gpt-4"
+    base_url = "https://aimpapi.midea.com/t-aigc/aimp-qwen2-5-72b-ascend/v1",
+    model_name="Qwen25-72B-Instruct",  # 默认模型，可改为 "gpt-4"
     temperature=0.2,  # 控制创造性（0-1，越大回答越随机）
+    default_headers = get_headers(),
 )
 
 def get_current_stock_price(ticker):
@@ -66,7 +70,8 @@ def route_tools(state: State,):
         ai_message = messages[-1]
     else:
         raise ValueError(f"No messages found in input state to tool_edge: {state}")
-    print(f"Rout tools info : \nAi msg : {ai_message}")
+    # print(f"Rout tools info : \nAi msg : {ai_message}")
+    print(f"Rout tools info : \nAi msg : {ai_message.tool_calls}")
     # 检查 ai_message 是否包含 tool_calls 属性
     if hasattr(ai_message, "tool_calls") and len(ai_message.tool_calls) > 0:
         print(f"return tools \n")
@@ -89,8 +94,9 @@ if __name__ == '__main__':
     # graph_builder.set_finish_point("chatbot")
     graph_builder.add_edge("tools", "chatbot")
     graph_builder.add_conditional_edges(
-        "chatbot", route_tools
-        #tools_condition
+        "chatbot", 
+        route_tools
+        # tools_condition
     )
 
     graph = graph_builder.compile()
@@ -117,5 +123,8 @@ if __name__ == '__main__':
             break
 
 """
+python3 vllm/entrypoints/openai/api_server.py --model /home/Documents/models/Qwen/Qwen2___5-7B-Instruct/ \
+    --max-model-len 30000 --port 8888 --served-model-name qwen25 \
+    --enable-auto-tool-choice and --tool-call-parser hermes  
  "What is the current price of Microsoft stock?"
 """
